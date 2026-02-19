@@ -6,7 +6,7 @@ const errorHandler = require("./middleware/error");
 const cookieParser = require("cookie-parser");
 const mongoSanitize = require("express-mongo-sanitize");
 const helmet = require("helmet");
-const xss = require("xss-clean");
+const xss = require("xss");
 const expressRateLimit = require("express-rate-limit");
 const cors = require("cors");
 const path = require("path");
@@ -27,7 +27,12 @@ app.use(express.json());
 app.use(helmet());
 
 // Prevent XSS attacks
-app.use(xss());
+app.use((req, res, next) => {
+  if (req.body) {
+    req.body = JSON.parse(xss(JSON.stringify(req.body)));
+  }
+  next();
+});
 
 // Rate limiting - 100 requests per 10 minutes
 const limiter = expressRateLimit({
@@ -51,9 +56,6 @@ if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
-// Serve local uploads folder (for fallback / dev use)
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
 // Mount v1 routes
 const auth = require("./routes/v1/auth");
 const users = require("./routes/v1/users");
@@ -66,7 +68,6 @@ app.use(errorHandler);
 
 // Start server
 const PORT = process.env.PORT || 4000;
-
 app.listen(PORT, () => {
   console.log(
     `Server is running in ${process.env.NODE_ENV} MODE on port ${PORT}`,
