@@ -27,10 +27,57 @@ exports.getService = asyncHandler(async (req, res, next) => {
 // @route   POST /api/v1/services
 // @access  Private/Admin
 exports.createService = asyncHandler(async (req, res, next) => {
-  if (req.files && req.files.image) {
-    req.body.image = req.files.image[0].location;
+  if (req.file) {
+    req.body.image = req.file.location;
   }
-  const service = await Service.create(req.body);
+
+  if (!req.body.title || !req.body.title.trim()) {
+    return next(new ErrorResponse("Title is required", 400));
+  }
+  if (!req.body.category || !req.body.category.trim()) {
+    return next(new ErrorResponse("Category is required", 400));
+  }
+
+  // Auto-generate slug if not provided
+  if (!req.body.slug) {
+    req.body.slug = req.body.title.toLowerCase().replace(/\s+/g, "-");
+  }
+
+  // Parse arrays sent as comma-separated strings
+  if (req.body.features && typeof req.body.features === "string") {
+    req.body.features = req.body.features
+      .split(",")
+      .map((f) => f.trim())
+      .filter(Boolean);
+  }
+
+  if (req.body.benefits && typeof req.body.benefits === "string") {
+    req.body.benefits = req.body.benefits
+      .split(",")
+      .map((b) => b.trim())
+      .filter(Boolean);
+  }
+
+  const allowedFields = [
+    "title",
+    "type",
+    "category",
+    "slug",
+    "shortDescription",
+    "fullDescription",
+    "icon",
+    "image",
+    "features",
+    "duration",
+    "specialists",
+    "benefits",
+  ];
+  const cleanBody = {};
+  for (const key of allowedFields) {
+    if (req.body[key] !== undefined) cleanBody[key] = req.body[key];
+  }
+
+  const service = await Service.create(cleanBody);
   res.status(201).json({ success: true, data: service });
 });
 
@@ -38,13 +85,49 @@ exports.createService = asyncHandler(async (req, res, next) => {
 // @route   PUT /api/v1/services/:id
 // @access  Private/Admin
 exports.updateService = asyncHandler(async (req, res, next) => {
-  if (req.files && req.files.image) {
-    req.body.image = req.files.image[0].location;
+  if (req.file) {
+    req.body.image = req.file.location;
   }
-  const service = await Service.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
+
+  // Parse arrays sent as comma-separated strings
+  if (req.body.features && typeof req.body.features === "string") {
+    req.body.features = req.body.features
+      .split(",")
+      .map((f) => f.trim())
+      .filter(Boolean);
+  }
+
+  if (req.body.benefits && typeof req.body.benefits === "string") {
+    req.body.benefits = req.body.benefits
+      .split(",")
+      .map((b) => b.trim())
+      .filter(Boolean);
+  }
+
+  const allowedFields = [
+    "title",
+    "type",
+    "category",
+    "slug",
+    "shortDescription",
+    "fullDescription",
+    "icon",
+    "image",
+    "features",
+    "duration",
+    "specialists",
+    "benefits",
+  ];
+  const cleanBody = {};
+  for (const key of allowedFields) {
+    if (req.body[key] !== undefined) cleanBody[key] = req.body[key];
+  }
+
+  const service = await Service.findByIdAndUpdate(req.params.id, cleanBody, {
+    returnDocument: "after",
     runValidators: true,
   });
+
   if (!service) return next(new ErrorResponse("Service not found", 404));
   res.status(200).json({ success: true, data: service });
 });

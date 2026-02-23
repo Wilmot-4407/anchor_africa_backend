@@ -1,22 +1,18 @@
 const express = require("express");
-const {
-  getWhyChooseUs,
-  upsertWhyChooseUs,
-  deleteWhyChooseUs,
-} = require("../../controllers/v1/whyChooseUs");
+const { getFaq, upsertFaq, deleteFaq } = require("../../controllers/v1/faqs");
 const { uploadImage } = require("../../middleware/upload");
 const { protect, authorize } = require("../../middleware/auth");
 const router = express.Router();
 
 router
   .route("/")
-  .get(getWhyChooseUs)
+  .get(getFaq)
   .post(
     protect,
     authorize("admin"),
     uploadImage("backgroundImage", "whychooseus"),
-    upsertWhyChooseUs,
+    upsertFaq,
   )
-  .delete(protect, authorize("admin"), deleteWhyChooseUs);
+  .delete(protect, authorize("admin"), deleteFaq);
 
 module.exports = router;

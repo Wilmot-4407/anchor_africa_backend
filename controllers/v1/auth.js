@@ -3,7 +3,6 @@ const ErrorResponse = require("../../utils/errorResponse");
 const asyncHandler = require("../../middleware/async");
 const sendEmail = require("../../utils/sendEmail");
 const crypto = require("crypto");
-const { getSignedUrlForKey } = require("../../config/awsConfig");
 
 // @desc    Register new User
 // @route   POST /api/v1/auth/register
@@ -53,23 +52,10 @@ exports.getMe = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("User not found", 404));
   }
 
-  let profilePicture = user.profilePicture;
-
-  if (
-    profilePicture &&
-    profilePicture !== "default.png" &&
-    profilePicture.includes(".amazonaws.com/")
-  ) {
-    const fileKey = profilePicture.split(".com/")[1];
-    profilePicture = await getSignedUrlForKey(fileKey, 300);
-  }
-
+  // Cloudinary URLs are direct public URLs — no signing needed
   res.status(200).json({
     success: true,
-    data: {
-      ...user.toObject(),
-      profilePicture,
-    },
+    data: user,
   });
 });
 

@@ -2,23 +2,6 @@ const User = require("../../models/User");
 const asyncHandler = require("../../middleware/async");
 const ErrorResponse = require("../../utils/errorResponse");
 const bcrypt = require("bcryptjs");
-const { getSignedUrlForKey } = require("../../config/awsConfig");
-
-// Helper to attach a signed URL to a user object
-const attachSignedUrl = async (user) => {
-  let profilePicture = user.profilePicture;
-
-  if (
-    profilePicture &&
-    profilePicture !== "default.png" &&
-    profilePicture.includes(".amazonaws.com/")
-  ) {
-    const fileKey = profilePicture.split(".com/")[1];
-    profilePicture = await getSignedUrlForKey(fileKey, 300);
-  }
-
-  return { ...user.toObject(), profilePicture };
-};
 
 // @desc    Create a new user
 // @route   POST /api/v1/users
@@ -62,12 +45,11 @@ exports.createUser = asyncHandler(async (req, res, next) => {
 exports.getUsers = asyncHandler(async (req, res, next) => {
   const users = await User.find();
 
-  const processedUsers = await Promise.all(users.map(attachSignedUrl));
-
+  // Cloudinary URLs are direct public URLs — no signing needed
   res.status(200).json({
     success: true,
-    count: processedUsers.length,
-    data: processedUsers,
+    count: users.length,
+    data: users,
   });
 });
 
@@ -83,9 +65,8 @@ exports.getUser = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const data = await attachSignedUrl(user);
-
-  res.status(200).json({ success: true, data });
+  // Cloudinary URLs are direct public URLs — no signing needed
+  res.status(200).json({ success: true, data: user });
 });
 
 // @desc    Update User

@@ -1,84 +1,92 @@
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
-const { S3Client } = require("@aws-sdk/client-s3");
-const { Upload } = require("@aws-sdk/lib-storage");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("cloudinary").v2;
 const ErrorResponse = require("../utils/errorResponse");
 
-// S3 client (credentials from env)
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
+// Configure Cloudinary using env variables
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Local disk storage for temporary files
-const diskStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, "..", "uploads"));
-  },
-  filename: (req, file, cb) => {
-    cb(
-      null,
-      `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`,
-    );
-  },
-});
-
-// Sanitize filename
-const sanitizeFileName = (filename) => {
-  return filename.replace(/\s+/g, "-").toLowerCase();
+const ALLOWED_FORMATS = {
+  image: ["jpg", "jpeg", "png", "webp", "gif", "svg"],
+  video: ["mp4", "mov", "avi", "mkv"],
+  document: ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt"],
 };
 
-// Upload file to S3
-const uploadToS3 = async (file, key) => {
-  const fileContent = fs.createReadStream(file.path);
-
-  const params = {
-    Bucket: process.env.AWS_S3_BUCKET_NAME,
-    Key: key,
-    Body: fileContent,
-    ContentType: file.mimetype,
-  };
-
-  const upload = new Upload({
-    client: s3Client,
-    params,
-  });
-
-  const result = await upload.done();
-
-  // Clean up local file
-  fs.unlinkSync(file.path);
-
-  return result;
+const getResourceType = (mimetype) => {
+  if (mimetype.startsWith("image/")) return "image";
+  if (mimetype.startsWith("video/")) return "video";
+  return "raw";
 };
 
-// Upload middleware factory
-exports.uploadImage = (field, folder = "general") => [
-  multer({ storage: diskStorage }).fields([{ name: field, maxCount: 1 }]),
-  async (req, res, next) => {
-    if (!req.files || !req.files[field]) {
-      return next(); // No file uploaded, proceed
-    }
+exports.uploadImage = (field, folder = "general") => {
+  return [
+    (req, res, next) => {
+      if (typeof next !== "function") {
+        return;
+      }
 
-    try {
-      const uploads = await Promise.all(
-        req.files[field].map((file) => {
-          const key = `${folder}/${sanitizeFileName(file.originalname)}`;
-          return uploadToS3(file, key);
-        }),
-      );
-      req.files[field] = uploads.map((result, idx) => ({
-        ...req.files[field][idx],
-        location: result.Location,
-      }));
+      const storage = new CloudinaryStorage({
+        cloudinary,
+        params: async (req, file) => {
+          const resourceType = getResourceType(file.mimetype);
+          const result = {
+            folder: `uploads/${folder}`,
+            resource_type: resourceType,
+            use_filename: true,
+            unique_filename: true,
+          };
+          return result;
+        },
+      });
+
+      const upload = multer({
+        storage,
+        limits: { fileSize: 10 * 1024 * 1024 },
+        fileFilter: (req, file, cb) => {
+          const allAllowed = [
+            ...ALLOWED_FORMATS.image,
+            ...ALLOWED_FORMATS.video,
+            ...ALLOWED_FORMATS.document,
+          ];
+          const ext = file.originalname.split(".").pop().toLowerCase();
+          if (allAllowed.includes(ext)) {
+            cb(null, true);
+          } else {
+            cb(
+              new ErrorResponse(`File type .${ext} is not allowed`, 400),
+              false,
+            );
+          }
+        },
+      }).single(field);
+
+      upload(req, res, (err) => {
+        if (err) {
+          return next(
+            new ErrorResponse(err.message || "File upload error", 500),
+          );
+        }
+        next();
+      });
+    },
+
+    // Middleware 2: normalise req.file.location
+    (req, res, next) => {
+      if (typeof next !== "function") {
+        return;
+      }
+
+      if (req.file) {
+        req.file = {
+          ...req.file,
+          location: req.file.path,
+        };
+      }
       next();
-    } catch (err) {
-      console.error("S3 upload error:", err);
-      return next(new ErrorResponse(err.message || "File upload error", 500));
-    }
-  },
-];
+    },
+  ];
+};

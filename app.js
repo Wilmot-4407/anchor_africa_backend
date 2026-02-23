@@ -20,11 +20,26 @@ connectDB();
 // Init express
 const app = express();
 
+// ✅ Enable CORS FIRST - before any other middleware
+const corsOptions = {
+  origin: ["https://admin.anchorafrica.org", "https://anchorafrica.org"],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  credentials: true,
+  optionsSuccessStatus: 200, // Some browsers (IE11) choke on 204
+};
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // Handle preflight for ALL routes
+
 // Body parser
 app.use(express.json());
 
-// Set security headers
-app.use(helmet());
+// Set security headers (after CORS)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // ✅ Prevent helmet from blocking cross-origin responses
+  }),
+);
 
 // Prevent XSS attacks
 app.use((req, res, next) => {
@@ -42,9 +57,6 @@ const limiter = expressRateLimit({
 });
 app.use(limiter);
 
-// Enable CORS
-app.use(cors());
-
 // Sanitize data (prevent MongoDB operator injection)
 app.use(mongoSanitize());
 
@@ -59,9 +71,19 @@ if (process.env.NODE_ENV === "development") {
 // Mount v1 routes
 const auth = require("./routes/v1/auth");
 const users = require("./routes/v1/users");
+const about = require("./routes/v1/about");
+const blog = require("./routes/v1/blog");
+const services = require("./routes/v1/services");
+const team = require("./routes/v1/team");
+const faq = require("./routes/v1/faq");
 
 app.use("/api/v1/auth", auth);
 app.use("/api/v1/users", users);
+app.use("/api/v1/about", about);
+app.use("/api/v1/blog", blog);
+app.use("/api/v1/services", services);
+app.use("/api/v1/team", team);
+app.use("/api/v1/faqs", faq);
 
 // Error handler middleware (must be last)
 app.use(errorHandler);
