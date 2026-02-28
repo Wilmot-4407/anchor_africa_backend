@@ -1,8 +1,33 @@
+/**
+ * controllers/v1/auth.js  — with full audit trail
+ */
+
 const User = require("../../models/User");
 const ErrorResponse = require("../../utils/errorResponse");
 const asyncHandler = require("../../middleware/async");
 const sendEmail = require("../../utils/sendEmail");
+const auditLog = require("../../utils/auditLog");
 const crypto = require("crypto");
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const sendTokenResponse = (user, statusCode, res) => {
+  const token = user.getSignedJwtToken();
+  const options = {
+    expires: new Date(
+      Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000,
+    ),
+    httpOnly: true,
+  };
+  if (process.env.NODE_ENV === "production") options.secure = true;
+
+  res.status(statusCode).cookie("token", token, options).json({
+    success: true,
+    token,
+  });
+};
+
+// ─── Register ─────────────────────────────────────────────────────────────────
 
 // @desc    Register new User
 // @route   POST /api/v1/auth/register
@@ -39,29 +64,23 @@ exports.register = asyncHandler(async (req, res, next) => {
     profilePicture: req.file ? req.file.location : "default.png",
   });
 
+  await auditLog({
+    req,
+    userId: user._id,
+    userName: user.userName,
+    type: "auth",
+    action: "REGISTER",
+    message: `New user registered: ${user.userName} (${user.email}) with role "${user.role}"`,
+  });
+
   sendTokenResponse(user, 201, res);
 });
 
-// @desc      Get current logged in user
-// @route     GET /api/v1/auth/me
-// @access    Private
-exports.getMe = asyncHandler(async (req, res, next) => {
-  const user = await User.findById(req.user.id);
+// ─── Login ────────────────────────────────────────────────────────────────────
 
-  if (!user) {
-    return next(new ErrorResponse("User not found", 404));
-  }
-
-  // Cloudinary URLs are direct public URLs — no signing needed
-  res.status(200).json({
-    success: true,
-    data: user,
-  });
-});
-
-// @desc      Login user
-// @route     POST /api/v1/auth/login
-// @access    Public
+// @desc    Login user
+// @route   POST /api/v1/auth/login
+// @access  Public
 exports.login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
@@ -78,16 +97,60 @@ exports.login = asyncHandler(async (req, res, next) => {
   const isMatch = await user.matchPassword(password.trim());
 
   if (!isMatch) {
+    // Log failed login attempt using the found user's id so createdBy is valid
+    await auditLog({
+      req,
+      userId: user._id,
+      userName: user.userName,
+      type: "auth",
+      action: "LOGIN_FAILED",
+      message: `Failed login attempt for ${email}`,
+    });
     return next(new ErrorResponse("Invalid credentials", 401));
   }
+
+  // Update lastLogin
+  user.lastLogin = new Date();
+  await user.save({ validateBeforeSave: false });
+
+  await auditLog({
+    req,
+    userId: user._id,
+    userName: user.userName,
+    type: "auth",
+    action: "LOGIN",
+    message: `User ${user.userName} logged in successfully`,
+  });
 
   sendTokenResponse(user, 200, res);
 });
 
-// @desc      Log user out / clear cookie
-// @route     GET /api/v1/auth/logout
-// @access    Private
+// ─── Get Me ───────────────────────────────────────────────────────────────────
+
+// @desc    Get current logged-in user
+// @route   GET /api/v1/auth/me
+// @access  Private
+exports.getMe = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user.id);
+  if (!user) return next(new ErrorResponse("User not found", 404));
+  res.status(200).json({ success: true, data: user });
+});
+
+// ─── Logout ───────────────────────────────────────────────────────────────────
+
+// @desc    Log user out / clear cookie
+// @route   GET /api/v1/auth/logout
+// @access  Private
 exports.logout = asyncHandler(async (req, res, next) => {
+  await auditLog({
+    req,
+    userId: req.user._id,
+    userName: req.user.userName,
+    type: "auth",
+    action: "LOGOUT",
+    message: `User ${req.user.userName} logged out`,
+  });
+
   res.cookie("token", "none", {
     expires: new Date(Date.now() + 10 * 1000),
     httpOnly: true,
@@ -96,9 +159,11 @@ exports.logout = asyncHandler(async (req, res, next) => {
   res.status(200).json({ success: true, data: {} });
 });
 
-// @desc      Update password
-// @route     PUT /api/v1/auth/updatepassword
-// @access    Private
+// ─── Update Password ──────────────────────────────────────────────────────────
+
+// @desc    Update password (while logged in)
+// @route   PUT /api/v1/auth/updatepassword
+// @access  Private
 exports.updatePassword = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.user.id).select("+password");
 
@@ -109,12 +174,23 @@ exports.updatePassword = asyncHandler(async (req, res, next) => {
   user.password = req.body.newPassword;
   await user.save();
 
+  await auditLog({
+    req,
+    userId: user._id,
+    userName: user.userName,
+    type: "auth",
+    action: "PASSWORD_UPDATE",
+    message: `User ${user.userName} changed their password`,
+  });
+
   sendTokenResponse(user, 200, res);
 });
 
-// @desc      Forgot password
-// @route     POST /api/v1/auth/forgotpassword
-// @access    Public
+// ─── Forgot Password ──────────────────────────────────────────────────────────
+
+// @desc    Forgot password — generate reset token + send email
+// @route   POST /api/v1/auth/forgetpassword
+// @access  Public
 exports.forgotPassword = asyncHandler(async (req, res, next) => {
   const user = await User.findOne({ email: req.body.email });
 
@@ -135,20 +211,30 @@ exports.forgotPassword = asyncHandler(async (req, res, next) => {
       message,
     });
 
+    await auditLog({
+      req,
+      userId: user._id,
+      userName: user.userName,
+      type: "auth",
+      action: "PASSWORD_RESET_REQUEST",
+      message: `Password reset email sent to ${user.email}`,
+    });
+
     res.status(200).json({ success: true, data: "Email sent" });
   } catch (err) {
     console.error("Email send error:", err);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
     await user.save({ validateBeforeSave: false });
-
     return next(new ErrorResponse("Email could not be sent", 500));
   }
 });
 
-// @desc      Reset password
-// @route     PUT /api/v1/auth/resetpassword/:resettoken
-// @access    Public
+// ─── Reset Password ───────────────────────────────────────────────────────────
+
+// @desc    Reset password via token
+// @route   PUT /api/v1/auth/resetpassword/:resettoken
+// @access  Public
 exports.resetPassword = asyncHandler(async (req, res, next) => {
   const resetPasswordToken = crypto
     .createHash("sha256")
@@ -169,26 +255,14 @@ exports.resetPassword = asyncHandler(async (req, res, next) => {
   user.resetPasswordExpire = undefined;
   await user.save();
 
+  await auditLog({
+    req,
+    userId: user._id,
+    userName: user.userName,
+    type: "auth",
+    action: "PASSWORD_RESET",
+    message: `Password successfully reset for user ${user.userName}`,
+  });
+
   sendTokenResponse(user, 200, res);
 });
-
-// Get token from model, create cookie and send response
-const sendTokenResponse = (user, statusCode, res) => {
-  const token = user.getSignedJwtToken();
-
-  const options = {
-    expires: new Date(
-      Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000,
-    ),
-    httpOnly: true,
-  };
-
-  if (process.env.NODE_ENV === "production") {
-    options.secure = true;
-  }
-
-  res.status(statusCode).cookie("token", token, options).json({
-    success: true,
-    token,
-  });
-};

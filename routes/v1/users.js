@@ -1,29 +1,35 @@
+/**
+ * routes/v1/users.js
+ *
+ * Admin-only CRUD for user accounts.
+ * All routes require authentication + admin role.
+ */
+
 const express = require("express");
+const router = express.Router();
+
 const {
-  getUser,
   getUsers,
+  getUser,
   createUser,
   updateUser,
   deleteUser,
 } = require("../../controllers/v1/users");
-const { uploadImage } = require("../../middleware/upload");
-const noCache = require("../../middleware/noCache");
-const { protect, authorize } = require("../../middleware/auth");
-const router = express.Router();
 
-// Apply noCache middleware to all project routes
-router.use(noCache);
+const { protect } = require("../../middleware/auth");
+const authorize = require("../../middleware/authorize");
 
-// initalize users routes
-router
-  .route("/")
-  .get(protect, getUsers)
-  .post(protect, authorize("admin"), uploadImage("profilePicture"), createUser);
+// Apply protect + admin gate to every users route
+router.use(protect);
+router.use(authorize("admin"));
 
-router
-  .route("/:id")
-  .get(protect, getUser)
-  .put(protect, authorize("admin"), uploadImage("profilePicture"), updateUser)
-  .delete(protect, authorize("admin"), deleteUser);
+// GET  /api/v1/users        — list all users
+// POST /api/v1/users        — create user
+router.route("/").get(getUsers).post(createUser);
+
+// GET    /api/v1/users/:id  — single user
+// PUT    /api/v1/users/:id  — update user
+// DELETE /api/v1/users/:id  — delete user
+router.route("/:id").get(getUser).put(updateUser).delete(deleteUser);
 
 module.exports = router;

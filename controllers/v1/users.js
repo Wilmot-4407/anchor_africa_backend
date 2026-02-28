@@ -1,7 +1,14 @@
+/**
+ * controllers/v1/users.js  — with full audit trail
+ */
+
 const User = require("../../models/User");
 const asyncHandler = require("../../middleware/async");
 const ErrorResponse = require("../../utils/errorResponse");
+const auditLog = require("../../utils/auditLog");
 const bcrypt = require("bcryptjs");
+
+// ─── Create User ─────────────────────────────────────────────────────────────
 
 // @desc    Create a new user
 // @route   POST /api/v1/users
@@ -36,38 +43,44 @@ exports.createUser = asyncHandler(async (req, res, next) => {
     profilePicture: req.file ? req.file.location : "default.png",
   });
 
+  await auditLog({
+    req,
+    userId: req.user._id,
+    userName: req.user.userName,
+    type: "user",
+    action: "CREATE",
+    message: `Admin ${req.user.userName} created user "${user.userName}" (${user.email}) with role "${user.role}"`,
+  });
+
   res.status(201).json({ success: true, data: user });
 });
+
+// ─── Get All Users ────────────────────────────────────────────────────────────
 
 // @desc    Get all users
 // @route   GET /api/v1/users
 // @access  Private/Admin
 exports.getUsers = asyncHandler(async (req, res, next) => {
   const users = await User.find();
-
-  // Cloudinary URLs are direct public URLs — no signing needed
-  res.status(200).json({
-    success: true,
-    count: users.length,
-    data: users,
-  });
+  res.status(200).json({ success: true, count: users.length, data: users });
 });
+
+// ─── Get Single User ──────────────────────────────────────────────────────────
 
 // @desc    Get single user
 // @route   GET /api/v1/users/:id
 // @access  Private/Admin
 exports.getUser = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.params.id);
-
   if (!user) {
     return next(
       new ErrorResponse(`User not found with id of ${req.params.id}`, 404),
     );
   }
-
-  // Cloudinary URLs are direct public URLs — no signing needed
   res.status(200).json({ success: true, data: user });
 });
+
+// ─── Update User ──────────────────────────────────────────────────────────────
 
 // @desc    Update User
 // @route   PUT /api/v1/users/:id
@@ -92,14 +105,10 @@ exports.updateUser = asyncHandler(async (req, res, next) => {
 
   if (req.body.dob) {
     const formattedDob = new Date(req.body.dob);
-    if (!isNaN(formattedDob.getTime())) {
-      updatedData.dob = formattedDob;
-    }
+    if (!isNaN(formattedDob.getTime())) updatedData.dob = formattedDob;
   }
 
-  if (req.file) {
-    updatedData.profilePicture = req.file.location;
-  }
+  if (req.file) updatedData.profilePicture = req.file.location;
 
   if (req.body.password && req.body.password.trim() !== "") {
     const salt = await bcrypt.genSalt(12);
@@ -117,8 +126,24 @@ exports.updateUser = asyncHandler(async (req, res, next) => {
     );
   }
 
+  // Build a human-readable list of what changed
+  const changedFields = Object.keys(updatedData)
+    .filter((f) => f !== "password")
+    .join(", ");
+
+  await auditLog({
+    req,
+    userId: req.user._id,
+    userName: req.user.userName,
+    type: "user",
+    action: "UPDATE",
+    message: `Admin ${req.user.userName} updated user "${user.userName}" — fields: ${changedFields || "password"}`,
+  });
+
   res.status(200).json({ success: true, data: user });
 });
+
+// ─── Delete User ──────────────────────────────────────────────────────────────
 
 // @desc    Delete User
 // @route   DELETE /api/v1/users/:id
@@ -131,6 +156,15 @@ exports.deleteUser = asyncHandler(async (req, res, next) => {
       new ErrorResponse(`User not found with id of ${req.params.id}`, 404),
     );
   }
+
+  await auditLog({
+    req,
+    userId: req.user._id,
+    userName: req.user.userName,
+    type: "user",
+    action: "DELETE",
+    message: `Admin ${req.user.userName} deleted user "${user.userName}" (${user.email})`,
+  });
 
   res.status(200).json({ success: true, data: {} });
 });

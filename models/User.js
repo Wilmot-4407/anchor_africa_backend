@@ -78,13 +78,13 @@ const UserSchema = new mongoose.Schema(
     resetPasswordExpire: Date,
     deviceToken: String,
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Encrypt password using bcrypt
-UserSchema.pre("save", async function (next) {
+UserSchema.pre("save", async function () {
   if (!this.isModified("password")) {
-    next();
+    return;
   }
 
   const salt = await bcrypt.genSalt(12);

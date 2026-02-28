@@ -1,8 +1,13 @@
 const express = require("express");
 const {
+  // Public
   getBlogPosts,
-  getBlogPost,
+  getBlogPostBySlug,
   getBlogPostById,
+  getBlogCategories,
+  getRelatedPosts,
+  // Admin
+  getAllBlogPostsAdmin,
   createBlogPost,
   updateBlogPost,
   deleteBlogPost,
@@ -11,36 +16,56 @@ const { uploadImage } = require("../../middleware/upload");
 const { protect, authorize } = require("../../middleware/auth");
 const router = express.Router();
 
-// ── Public routes ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// PUBLIC ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
 
-// GET /api/v1/blog           → all posts (sorted newest first)
-// POST /api/v1/blog          → create post (admin)
+// GET  /api/v1/blog
+//   → all published posts (supports ?status=&category=&tag=&search=&limit=&page=&featured=)
+// POST /api/v1/blog  → create post (admin)
 router
   .route("/")
   .get(getBlogPosts)
   .post(
     protect,
     authorize("admin"),
-    uploadImage("image", "blog"),
+    ...uploadImage("image", "blog"),
     createBlogPost,
   );
 
-// GET /api/v1/blog/slug/:slug → fetch by slug (used by BlogDetails page)
-// Placed BEFORE /:id so Express doesn't treat "slug" as an ObjectId
-router.route("/slug/:slug").get(getBlogPost);
+// GET /api/v1/blog/categories
+//   → distinct category list from published posts
+// ⚠ Must be declared BEFORE /:id / /:slug so Express doesn't swallow "categories"
+router.route("/categories").get(getBlogCategories);
 
-// ── Admin routes (by MongoDB _id) ────────────────────────────────────────────
+// GET /api/v1/blog/admin/all
+//   → ALL posts regardless of status (admin only)
+router
+  .route("/admin/all")
+  .get(protect, authorize("admin"), getAllBlogPostsAdmin);
 
-// GET  /api/v1/blog/:id  → fetch single by ID
-// PUT  /api/v1/blog/:id  → update
-// DEL  /api/v1/blog/:id  → delete
+// GET /api/v1/blog/slug/:slug
+//   → fetch full post by slug (used by BlogDetails page)
+// ⚠ Must be declared BEFORE /:id so "slug" isn't treated as an ObjectId
+router.route("/slug/:slug").get(getBlogPostBySlug);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ROUTES WITH DYNAMIC :id SEGMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET  /api/v1/blog/:id/related  → related posts (same category / tags)
+router.route("/:id/related").get(getRelatedPosts);
+
+// GET  /api/v1/blog/:id  → fetch single post by MongoDB _id (admin use)
+// PUT  /api/v1/blog/:id  → update post
+// DEL  /api/v1/blog/:id  → delete post
 router
   .route("/:id")
   .get(protect, authorize("admin"), getBlogPostById)
   .put(
     protect,
     authorize("admin"),
-    uploadImage("image", "blog"),
+    ...uploadImage("image", "blog"),
     updateBlogPost,
   )
   .delete(protect, authorize("admin"), deleteBlogPost);

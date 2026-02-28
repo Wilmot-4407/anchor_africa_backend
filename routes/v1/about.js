@@ -11,7 +11,7 @@ const router = express.Router();
 router
   .route("/")
   .get(getAbout)
-  .post(protect, uploadImage("image", "about"), upsertAbout)
+  .post(protect, ...uploadImage("image", "about"), upsertAbout)
   .delete(protect, authorize("admin"), deleteAbout);
 
 module.exports = router;
