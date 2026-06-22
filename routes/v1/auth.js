@@ -1,4 +1,5 @@
 const express = require("express");
+const expressRateLimit = require("express-rate-limit");
 const { uploadImage } = require("../../middleware/upload");
 const {
   login,
@@ -12,6 +13,14 @@ const noCache = require("../../middleware/noCache");
 const { protect } = require("../../middleware/auth");
 const router = express.Router();
 
+// Strict rate limiter for the login endpoint only
+const loginLimiter = expressRateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  skipSuccessfulRequests: true,
+  message: { success: false, error: "Too many login attempts. Try again in 15 minutes." },
+});
+
 // Apply noCache middleware to all auth routes
 router.use(noCache);
 
@@ -21,7 +30,7 @@ router
   .post(...uploadImage("profilePicture", "avatars"), register);
 
 // POST /api/v1/auth/login
-router.route("/login").post(login);
+router.route("/login").post(loginLimiter, login);
 
 // GET  /api/v1/auth/logout
 router.route("/logout").get(protect, logout);

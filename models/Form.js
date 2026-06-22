@@ -36,6 +36,7 @@ const FormFieldSchema = new mongoose.Schema(
     placeholder: { type: String, trim: true, maxlength: [200, "Placeholder cannot exceed 200 characters"] },
     required: { type: Boolean, default: false },
     options: [{ type: String, trim: true }],
+    colSpan: { type: Number, enum: [1, 2], default: 2 },
   },
   { _id: false }
 );

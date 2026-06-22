@@ -20,7 +20,9 @@ connectDB();
 // Init express
 const app = express();
 
-// ====================== CORS CONFIG (FIXED FOR LOCAL DEV) ======================
+// Trust the first proxy hop (Hostinger/nginx) so req.ip is correct
+// This is required for rate limiting and IP-based duplicate-submission checks
+app.set("trust proxy", 1);
 const allowedOrigins = [
   "https://admin.anchorafrica.org",
   "https://anchorafrica.org",
@@ -62,8 +64,9 @@ app.use(corsMiddleware);
 app.options("*", corsMiddleware);
 // =============================================================================
 
-// Body parser
-app.use(express.json());
+// Body parser — strict limit to block large JSON payloads
+app.use(express.json({ limit: "50kb" }));
+app.use(express.urlencoded({ extended: false, limit: "50kb" }));
 
 // Set security headers
 app.use(

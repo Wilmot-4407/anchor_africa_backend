@@ -18,12 +18,13 @@ const sendTokenResponse = (user, statusCode, res) => {
       Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000,
     ),
     httpOnly: true,
+    sameSite: "Strict",
   };
   if (process.env.NODE_ENV === "production") options.secure = true;
 
+  // Token is delivered via httpOnly cookie only — never in the response body
   res.status(statusCode).cookie("token", token, options).json({
     success: true,
-    token,
   });
 };
 
@@ -42,9 +43,9 @@ exports.register = asyncHandler(async (req, res, next) => {
     lastName,
     address,
     phoneNumber,
-    status,
-    role,
   } = req.body;
+  // role and status are intentionally excluded — model defaults apply
+  // to prevent privilege escalation via the public registration endpoint
 
   if (!userName || !email || !dob || !password || !firstName || !lastName) {
     return next(new ErrorResponse("Please provide all required fields", 400));
@@ -59,8 +60,6 @@ exports.register = asyncHandler(async (req, res, next) => {
     lastName,
     address,
     phoneNumber,
-    status,
-    role,
     profilePicture: req.file ? req.file.location : "default.png",
   });
 
@@ -154,6 +153,8 @@ exports.logout = asyncHandler(async (req, res, next) => {
   res.cookie("token", "none", {
     expires: new Date(Date.now() + 10 * 1000),
     httpOnly: true,
+    sameSite: "Strict",
+    secure: process.env.NODE_ENV === "production",
   });
 
   res.status(200).json({ success: true, data: {} });
@@ -195,13 +196,17 @@ exports.forgotPassword = asyncHandler(async (req, res, next) => {
   const user = await User.findOne({ email: req.body.email });
 
   if (!user) {
-    return next(new ErrorResponse("There is no user with that email", 404));
+    // Return generic response to prevent user enumeration
+    return res.status(200).json({
+      success: true,
+      data: "If that email is registered, a reset link has been sent.",
+    });
   }
 
   const resetToken = user.getResetPasswordToken();
   await user.save({ validateBeforeSave: false });
 
-  const resetUrl = `${req.protocol}://${req.get("host")}/api/v1/auth/resetpassword/${resetToken}`;
+  const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
   const message = `You are receiving this email because you (or someone else) has requested a password reset. Please make a PUT request to:\n\n${resetUrl}`;
 
   try {

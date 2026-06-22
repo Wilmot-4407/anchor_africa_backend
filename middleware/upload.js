@@ -11,8 +11,9 @@ cloudinary.config({
 });
 
 // ── Allowed file types ────────────────────────────────────────────────────────
+// SVG excluded — can contain embedded <script> tags (stored XSS vector)
 const ALLOWED_FORMATS = {
-  image: ["jpg", "jpeg", "png", "webp", "gif", "svg"],
+  image: ["jpg", "jpeg", "png", "webp", "gif"],
   video: ["mp4", "mov", "avi", "mkv"],
   document: ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt"],
 };
@@ -22,6 +23,20 @@ const ALL_ALLOWED = [
   ...ALLOWED_FORMATS.video,
   ...ALLOWED_FORMATS.document,
 ];
+
+// Allowed MIME types keyed to the extensions above — checked in addition to extension
+const ALLOWED_MIMETYPES = new Set([
+  "image/jpeg", "image/png", "image/webp", "image/gif",
+  "video/mp4", "video/quicktime", "video/x-msvideo", "video/x-matroska",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+]);
 
 const getResourceType = (mimetype) => {
   if (mimetype.startsWith("image/")) return "image";
@@ -56,12 +71,15 @@ exports.uploadImage = (field, folder = "general") => {
       storage,
       limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
       fileFilter: (_req, file, cb) => {
-        const ext = file.originalname.split(".").pop().toLowerCase();
-        if (ALL_ALLOWED.includes(ext)) {
-          cb(null, true);
-        } else {
-          cb(new ErrorResponse(`File type .${ext} is not allowed`, 400), false);
+        // Check MIME type (from stream) first, then extension as secondary guard
+        if (!ALLOWED_MIMETYPES.has(file.mimetype)) {
+          return cb(new ErrorResponse(`File type not allowed`, 400), false);
         }
+        const ext = file.originalname.split(".").pop().toLowerCase();
+        if (!ALL_ALLOWED.includes(ext)) {
+          return cb(new ErrorResponse(`File extension .${ext} is not allowed`, 400), false);
+        }
+        cb(null, true);
       },
     }).single(field);
 

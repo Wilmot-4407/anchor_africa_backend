@@ -26,20 +26,22 @@ exports.protect = asyncHandler(async (req, res, next) => {
   }
 
   try {
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Verify token with explicit algorithm to prevent algorithm confusion attacks
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ["HS256"],
+    });
 
-    // find user by id, from decoded token
     req.user = await User.findById(decoded.id);
 
     if (!req.user) {
-      console.log("User not found", decoded.id); // Add this log
       return next(new ErrorResponse("User not found", 404));
     }
 
     next();
   } catch (err) {
-    console.log("Error in protec middleware:", err);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[auth] Token verification failed:", err.name);
+    }
     return next(
       new ErrorResponse("You are Not authorized to access this route", 401)
     );

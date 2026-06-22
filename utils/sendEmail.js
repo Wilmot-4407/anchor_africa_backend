@@ -37,14 +37,14 @@ const sendContactFormMail = async (info) => {
       pass: process.env.CONTACT_FORM_PASS,
     },
     tls: {
-      ciphers: "SSLv3",
-      rejectUnauthorized: false,
+      minVersion: "TLSv1.2",
+      rejectUnauthorized: true,
     },
   });
 
   const mailOptions = {
-    from: "onlinebanking@accessbankliberia.com",
-    to: "info@accessbankliberia.com",
+    from: process.env.CONTACT_FROM_EMAIL || process.env.CONTACT_FORM_EMAIL,
+    to: process.env.CONTACT_TO_EMAIL,
     subject: info.subject,
     text: `
       Name: ${info.fullName}
