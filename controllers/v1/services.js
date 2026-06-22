@@ -50,24 +50,16 @@ function parseCommaArray(raw) {
   return undefined;
 }
 
-function parseItems(raw) {
+function parseJsonArray(raw) {
   if (!raw) return undefined;
-  try {
-    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-    if (!Array.isArray(parsed)) return undefined;
-    return parsed.map((item) => ({
-      ...item,
-      slug: item.slug || slugify(item.name || ""),
-      features: Array.isArray(item.features)
-        ? item.features
-        : parseCommaArray(item.features) || [],
-      benefits: Array.isArray(item.benefits)
-        ? item.benefits
-        : parseCommaArray(item.benefits) || [],
-    }));
-  } catch (_) {
-    return undefined;
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (_) {}
   }
+  return undefined;
 }
 
 const ALLOWED_FIELDS = [
@@ -83,11 +75,17 @@ const ALLOWED_FIELDS = [
   "benefits",
   "order",
   "isPublished",
+  "programType",
+  "duration",
+  "specialists",
+  "learningObjectives",
+  "modules",
+  "pricing",
 ];
 
 // ─── PUBLIC CONTROLLERS ───────────────────────────────────────────────────────
 
-// @desc    Get all published service categories
+// @desc    Get all published services (optionally filter by type)
 // @route   GET /api/v1/services?type=clinic|institute|research
 // @access  Public
 exports.getServices = asyncHandler(async (req, res) => {
@@ -95,34 +93,20 @@ exports.getServices = asyncHandler(async (req, res) => {
   const filter = { isPublished: true };
   if (type) filter.type = type;
 
-  const services = await Service.find(filter)
-    .sort({ order: 1, createdAt: -1 })
-    .select("-items");
+  const services = await Service.find(filter).sort({ order: 1, createdAt: -1 });
 
   res
     .status(200)
     .json({ success: true, count: services.length, data: services });
 });
 
-// @desc    Get single service category by slug
+// @desc    Get single service by slug
 // @route   GET /api/v1/services/:slug
 // @access  Public
 exports.getService = asyncHandler(async (req, res, next) => {
   const service = await Service.findOne({ slug: req.params.slug });
   if (!service) return next(new ErrorResponse("Service not found", 404));
   res.status(200).json({ success: true, data: service });
-});
-
-// @desc    Get a single nested service item
-// @route   GET /api/v1/services/:categorySlug/items/:itemSlug
-// @access  Public
-exports.getServiceItem = asyncHandler(async (req, res, next) => {
-  const category = await Service.findOne({ slug: req.params.categorySlug });
-  if (!category)
-    return next(new ErrorResponse("Service category not found", 404));
-  const item = category.items.find((i) => i.slug === req.params.itemSlug);
-  if (!item) return next(new ErrorResponse("Service item not found", 404));
-  res.status(200).json({ success: true, data: { category, item } });
 });
 
 // ─── ADMIN CONTROLLERS ────────────────────────────────────────────────────────
@@ -137,7 +121,7 @@ exports.getAllServicesAdmin = asyncHandler(async (req, res) => {
     .json({ success: true, count: services.length, data: services });
 });
 
-// @desc    Create service category
+// @desc    Create service
 // @route   POST /api/v1/services
 // @access  Private/Admin
 exports.createService = asyncHandler(async (req, res, next) => {
@@ -160,6 +144,13 @@ exports.createService = asyncHandler(async (req, res, next) => {
     req.body.features = parseCommaArray(req.body.features) ?? [];
   if (req.body.benefits !== undefined)
     req.body.benefits = parseCommaArray(req.body.benefits) ?? [];
+  if (req.body.learningObjectives !== undefined)
+    req.body.learningObjectives =
+      parseCommaArray(req.body.learningObjectives) ?? [];
+  if (req.body.modules !== undefined)
+    req.body.modules = parseJsonArray(req.body.modules) ?? [];
+  if (req.body.pricing !== undefined)
+    req.body.pricing = parseJsonArray(req.body.pricing) ?? [];
   if (req.body.isPublished !== undefined)
     req.body.isPublished =
       req.body.isPublished === "true" || req.body.isPublished === true;
@@ -177,15 +168,15 @@ exports.createService = asyncHandler(async (req, res, next) => {
     userName: req.user.userName,
     type: "service",
     action: "CREATE",
-    message: `Admin ${req.user.userName} created service category "${service.title}" (type: ${service.type})`,
+    message: `Admin ${req.user.userName} created service "${service.title}" (type: ${service.type}, category: ${service.category})`,
   });
 
   res.status(201).json({ success: true, data: service });
 });
 
-// @desc    Bulk-create service categories
+// @desc    Bulk-create services
 // @route   POST /api/v1/services/bulk
-// @access  Private/Admin
+// @access  Private/Admin  (or open for seeding — adjust auth as needed)
 exports.bulkCreateServices = asyncHandler(async (req, res, next) => {
   const entries = req.body.services;
 
@@ -259,6 +250,14 @@ exports.bulkCreateServices = asyncHandler(async (req, res, next) => {
         raw.features !== undefined ? (parseCommaArray(raw.features) ?? []) : [];
       doc.benefits =
         raw.benefits !== undefined ? (parseCommaArray(raw.benefits) ?? []) : [];
+      doc.learningObjectives =
+        raw.learningObjectives !== undefined
+          ? (parseCommaArray(raw.learningObjectives) ?? [])
+          : [];
+      doc.modules =
+        raw.modules !== undefined ? (parseJsonArray(raw.modules) ?? []) : [];
+      doc.pricing =
+        raw.pricing !== undefined ? (parseJsonArray(raw.pricing) ?? []) : [];
       doc.isPublished =
         raw.isPublished === undefined
           ? true
@@ -277,8 +276,7 @@ exports.bulkCreateServices = asyncHandler(async (req, res, next) => {
     }
   }
 
-  // Audit the bulk operation
-  if (created.length > 0) {
+  if (created.length > 0 && req.user) {
     await auditLog({
       req,
       userId: req.user?._id,
@@ -303,7 +301,7 @@ exports.bulkCreateServices = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @desc    Update service category
+// @desc    Update service
 // @route   PUT /api/v1/services/:id
 // @access  Private/Admin
 exports.updateService = asyncHandler(async (req, res, next) => {
@@ -322,6 +320,13 @@ exports.updateService = asyncHandler(async (req, res, next) => {
     req.body.features = parseCommaArray(req.body.features) ?? [];
   if (req.body.benefits !== undefined)
     req.body.benefits = parseCommaArray(req.body.benefits) ?? [];
+  if (req.body.learningObjectives !== undefined)
+    req.body.learningObjectives =
+      parseCommaArray(req.body.learningObjectives) ?? [];
+  if (req.body.modules !== undefined)
+    req.body.modules = parseJsonArray(req.body.modules) ?? [];
+  if (req.body.pricing !== undefined)
+    req.body.pricing = parseJsonArray(req.body.pricing) ?? [];
   if (req.body.isPublished !== undefined)
     req.body.isPublished =
       req.body.isPublished === "true" || req.body.isPublished === true;
@@ -345,99 +350,13 @@ exports.updateService = asyncHandler(async (req, res, next) => {
     userName: req.user.userName,
     type: "service",
     action: "UPDATE",
-    message: `Admin ${req.user.userName} updated service category "${service.title}"`,
+    message: `Admin ${req.user.userName} updated service "${service.title}"`,
   });
 
   res.status(200).json({ success: true, data: service });
 });
 
-// @desc    Add / update a nested service item
-// @route   POST /api/v1/services/:id/items
-// @access  Private/Admin
-exports.upsertServiceItem = asyncHandler(async (req, res, next) => {
-  const category = await Service.findById(req.params.id);
-  if (!category)
-    return next(new ErrorResponse("Service category not found", 404));
-  if (!req.body.name?.trim())
-    return next(new ErrorResponse("Item name is required", 400));
-
-  const itemSlug = req.body.slug
-    ? slugify(req.body.slug)
-    : slugify(req.body.name);
-  if (req.file) req.body.image = req.file.location;
-
-  const itemData = {
-    name: req.body.name,
-    slug: itemSlug,
-    shortDescription: req.body.shortDescription || "",
-    fullDescription: req.body.fullDescription || "",
-    icon: req.body.icon || "",
-    image: req.body.image || "default-service.png",
-    duration: req.body.duration || "",
-    specialists: req.body.specialists || "",
-    order: Number(req.body.order) || 0,
-    features: parseCommaArray(req.body.features) ?? [],
-    benefits: parseCommaArray(req.body.benefits) ?? [],
-  };
-
-  const existingIdx = category.items.findIndex((i) => i.slug === itemSlug);
-  const isUpdate = existingIdx >= 0;
-
-  if (isUpdate) {
-    category.items[existingIdx] = {
-      ...category.items[existingIdx].toObject(),
-      ...itemData,
-    };
-  } else {
-    category.items.push(itemData);
-  }
-
-  await category.save();
-
-  await auditLog({
-    req,
-    userId: req.user._id,
-    userName: req.user.userName,
-    type: "service",
-    action: isUpdate ? "UPDATE_ITEM" : "CREATE_ITEM",
-    message: `Admin ${req.user.userName} ${isUpdate ? "updated" : "added"} item "${itemData.name}" in service "${category.title}"`,
-  });
-
-  res.status(200).json({ success: true, data: category });
-});
-
-// @desc    Delete a nested service item
-// @route   DELETE /api/v1/services/:id/items/:itemSlug
-// @access  Private/Admin
-exports.deleteServiceItem = asyncHandler(async (req, res, next) => {
-  const category = await Service.findById(req.params.id);
-  if (!category)
-    return next(new ErrorResponse("Service category not found", 404));
-
-  const before = category.items.length;
-  const deletedItem = category.items.find(
-    (i) => i.slug === req.params.itemSlug,
-  );
-  category.items = category.items.filter((i) => i.slug !== req.params.itemSlug);
-
-  if (category.items.length === before)
-    return next(new ErrorResponse("Service item not found", 404));
-
-  await category.save();
-
-  await auditLog({
-    req,
-    userId: req.user._id,
-    userName: req.user.userName,
-    type: "service",
-    action: "DELETE_ITEM",
-    message: `Admin ${req.user.userName} deleted item "${deletedItem?.name}" from service "${category.title}"`,
-  });
-
-  res.status(200).json({ success: true, data: category });
-});
-
-// @desc    Delete service category (and all its items)
+// @desc    Delete service
 // @route   DELETE /api/v1/services/:id
 // @access  Private/Admin
 exports.deleteService = asyncHandler(async (req, res, next) => {
@@ -450,7 +369,7 @@ exports.deleteService = asyncHandler(async (req, res, next) => {
     userName: req.user.userName,
     type: "service",
     action: "DELETE",
-    message: `Admin ${req.user.userName} deleted service category "${service.title}" and all its items`,
+    message: `Admin ${req.user.userName} deleted service "${service.title}"`,
   });
 
   res.status(200).json({ success: true, data: {} });

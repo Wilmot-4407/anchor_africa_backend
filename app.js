@@ -24,12 +24,11 @@ const app = express();
 const allowedOrigins = [
   "https://admin.anchorafrica.org",
   "https://anchorafrica.org",
+  "https://forms.anchorafrica.org",
   "http://localhost:5173", // default Vite port
   "http://localhost:5174", // your current frontend port
   "http://127.0.0.1:5173",
   "http://127.0.0.1:5174",
-  // Add any other ports/IPs you use (e.g. mobile testing)
-  // "http://192.168.1.100:5174",
 ];
 
 const corsOptions = {
@@ -112,6 +111,12 @@ const faq = require("./routes/v1/faq");
 const aiRoutes = require("./routes/v1/ai");
 const logs = require("./routes/v1/logs");
 
+// Campaign Forms module
+const forms = require("./routes/v1/forms");
+const publicForms = require("./routes/v1/publicForms");
+const formResponses = require("./routes/v1/formResponses");
+const formAnalytics = require("./routes/v1/formAnalytics");
+
 app.use("/api/v1/auth", auth);
 app.use("/api/v1/users", users);
 app.use("/api/v1/about", about);
@@ -121,6 +126,13 @@ app.use("/api/v1/team", team);
 app.use("/api/v1/faqs", faq);
 app.use("/api/v1/ai", aiRoutes);
 app.use("/api/v1/logs", logs);
+
+// Campaign Forms — sub-resource routes mount before the parent so Express
+// exact-matches /forms/:formId/responses before /forms/:id catches anything
+app.use("/api/v1/forms/:formId/responses", formResponses);
+app.use("/api/v1/forms/:formId/analytics", formAnalytics);
+app.use("/api/v1/forms", forms);
+app.use("/api/v1/public/forms", publicForms);
 
 // Error handler middleware (must be last)
 app.use(errorHandler);
