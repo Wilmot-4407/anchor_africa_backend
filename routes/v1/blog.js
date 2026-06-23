@@ -12,7 +12,7 @@ const {
   updateBlogPost,
   deleteBlogPost,
 } = require("../../controllers/v1/blog");
-const { uploadImage } = require("../../middleware/upload");
+const { uploadFields } = require("../../middleware/upload");
 const { protect, authorize } = require("../../middleware/auth");
 const router = express.Router();
 
@@ -29,7 +29,7 @@ router
   .post(
     protect,
     authorize("admin"),
-    ...uploadImage("image", "blog"),
+    ...uploadFields(["image", "authorAvatar"], "blog"),
     createBlogPost,
   );
 
@@ -65,7 +65,7 @@ router
   .put(
     protect,
     authorize("admin"),
-    ...uploadImage("image", "blog"),
+    ...uploadFields(["image", "authorAvatar"], "blog"),
     updateBlogPost,
   )
   .delete(protect, authorize("admin"), deleteBlogPost);

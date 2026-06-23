@@ -108,3 +108,64 @@ exports.uploadImage = (field, folder = "general") => {
 
   return [uploadMiddleware, normaliseMiddleware];
 };
+
+// ── uploadFields ──────────────────────────────────────────────────────────────
+// Like uploadImage but accepts multiple named fields in one multipart request.
+// fieldNames: string[]  e.g. ["image", "authorAvatar"]
+// All files land in the same Cloudinary folder.
+//
+// Usage in routes:
+//   router.post("/", protect, ...uploadFields(["image", "authorAvatar"], "blog"), createPost);
+//
+// Controllers read files from req.files:
+//   req.files?.image?.[0].location
+//   req.files?.authorAvatar?.[0].location
+// ─────────────────────────────────────────────────────────────────────────────
+exports.uploadFields = (fieldNames, folder = "general") => {
+  const uploadMiddleware = (req, res, next) => {
+    const storage = new CloudinaryStorage({
+      cloudinary,
+      params: async (_req, file) => ({
+        folder: `uploads/${folder}`,
+        resource_type: getResourceType(file.mimetype),
+        use_filename: true,
+        unique_filename: true,
+      }),
+    });
+
+    const upload = multer({
+      storage,
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (!ALLOWED_MIMETYPES.has(file.mimetype)) {
+          return cb(new ErrorResponse(`File type not allowed`, 400), false);
+        }
+        const ext = file.originalname.split(".").pop().toLowerCase();
+        if (!ALL_ALLOWED.includes(ext)) {
+          return cb(new ErrorResponse(`File extension .${ext} is not allowed`, 400), false);
+        }
+        cb(null, true);
+      },
+    }).fields(fieldNames.map((name) => ({ name, maxCount: 1 })));
+
+    upload(req, res, (err) => {
+      if (err) {
+        return next(new ErrorResponse(err.message || "File upload error", err.status || 500));
+      }
+      next();
+    });
+  };
+
+  const normaliseMiddleware = (req, res, next) => {
+    if (req.files) {
+      for (const fileArr of Object.values(req.files)) {
+        if (fileArr?.[0]?.path && !fileArr[0].location) {
+          fileArr[0].location = fileArr[0].path;
+        }
+      }
+    }
+    next();
+  };
+
+  return [uploadMiddleware, normaliseMiddleware];
+};

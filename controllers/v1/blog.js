@@ -183,7 +183,9 @@ exports.getAllBlogPostsAdmin = asyncHandler(async (req, res) => {
 // @route   POST /api/v1/blog
 // @access  Private/Admin
 exports.createBlogPost = asyncHandler(async (req, res, next) => {
-  if (req.file) req.body.image = req.file.location;
+  if (req.files?.image?.[0]) req.body.image = req.files.image[0].location;
+  else if (req.file) req.body.image = req.file.location;
+  if (req.files?.authorAvatar?.[0]) req.body.authorAvatar = req.files.authorAvatar[0].location;
 
   if (!req.body.title?.trim())
     return next(new ErrorResponse("Title is required", 400));
@@ -226,7 +228,9 @@ exports.createBlogPost = asyncHandler(async (req, res, next) => {
 // @route   PUT /api/v1/blog/:id
 // @access  Private/Admin
 exports.updateBlogPost = asyncHandler(async (req, res, next) => {
-  if (req.file) req.body.image = req.file.location;
+  if (req.files?.image?.[0]) req.body.image = req.files.image[0].location;
+  else if (req.file) req.body.image = req.file.location;
+  if (req.files?.authorAvatar?.[0]) req.body.authorAvatar = req.files.authorAvatar[0].location;
 
   if (req.body.slug) {
     req.body.slug = await makeUniqueSlug(slugify(req.body.slug), req.params.id);
