@@ -25,20 +25,16 @@ const sendEmail = async (options) => {
 };
 
 /**
- * Send a contact form email via Office 365 SMTP
+ * Send a contact form email via Hostinger SMTP
  */
 const sendContactFormMail = async (info) => {
   const transporter = nodemailer.createTransport({
-    host: "smtp.office365.com",
-    port: 587,
-    secure: false,
+    host: process.env.CONTACT_SMTP_HOST || "smtp.hostinger.com",
+    port: parseInt(process.env.CONTACT_SMTP_PORT || "465", 10),
+    secure: true, // port 465 uses SSL
     auth: {
       user: process.env.CONTACT_FORM_EMAIL,
       pass: process.env.CONTACT_FORM_PASS,
-    },
-    tls: {
-      minVersion: "TLSv1.2",
-      rejectUnauthorized: true,
     },
   });
 

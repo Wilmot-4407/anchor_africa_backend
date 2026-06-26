@@ -113,6 +113,7 @@ const team = require("./routes/v1/team");
 const faq = require("./routes/v1/faq");
 const aiRoutes = require("./routes/v1/ai");
 const logs = require("./routes/v1/logs");
+const contact = require("./routes/v1/contact");
 
 // Campaign Forms module
 const forms = require("./routes/v1/forms");
@@ -129,6 +130,7 @@ app.use("/api/v1/team", team);
 app.use("/api/v1/faqs", faq);
 app.use("/api/v1/ai", aiRoutes);
 app.use("/api/v1/logs", logs);
+app.use("/api/v1/contact", contact);
 
 // Campaign Forms — sub-resource routes mount before the parent so Express
 // exact-matches /forms/:formId/responses before /forms/:id catches anything
