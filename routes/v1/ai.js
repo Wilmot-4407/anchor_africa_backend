@@ -17,6 +17,13 @@ console.log(`🚀 Using Gemini model: ${GEMINI_MODEL}`);
 // Returns: { success: true, suggestions: [{ icon, reason, score }] }
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/suggest-icon", protect, authorize("admin"), async (req, res) => {
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(503).json({
+      success: false,
+      error: "AI suggestions unavailable — GEMINI_API_KEY is not configured on the server.",
+    });
+  }
+
   const {
     title = "",
     shortDescription = "",
