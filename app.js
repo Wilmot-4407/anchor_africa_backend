@@ -62,6 +62,13 @@ app.use(corsMiddleware);
 
 // Handle preflight requests for ALL routes
 app.options("*", corsMiddleware);
+
+// Tell CDN/proxies never to cache API responses (prevents stale CORS headers)
+app.use((req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  res.set("Surrogate-Control", "no-store");
+  next();
+});
 // =============================================================================
 
 // Body parser — strict limit to block large JSON payloads
