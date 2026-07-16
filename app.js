@@ -23,28 +23,8 @@ const app = express();
 // Trust the first proxy hop (Hostinger/nginx) so req.ip is correct
 // This is required for rate limiting and IP-based duplicate-submission checks
 app.set("trust proxy", 1);
-const allowedOrigins = [
-  "https://admin.anchorafrica.org",
-  "https://anchorafrica.org",
-  "https://forms.anchorafrica.org",
-  "http://localhost:5173", // default Vite port
-  "http://localhost:5174", // your current frontend port
-  "http://127.0.0.1:5173",
-  "http://127.0.0.1:5174",
-];
-
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (Postman, mobile apps, etc.)
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log(`❌ CORS blocked origin: ${origin}`);
-      callback(new Error(`Not allowed by CORS: ${origin}`));
-    }
-  },
+  origin: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
@@ -155,5 +135,5 @@ app.listen(PORT, () => {
   console.log(
     `✅ Server is running in ${process.env.NODE_ENV || "development"} MODE on port ${PORT}`,
   );
-  console.log(`📍 Allowed CORS origins: ${allowedOrigins.join(", ")}`);
+  console.log(`📍 CORS: all origins allowed (origin: true)`);
 });
