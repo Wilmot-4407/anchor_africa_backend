@@ -20,7 +20,49 @@ connectDB();
 // Init express
 const app = express();
 
-app.use(cors({}));
+// Trust the first proxy hop (Hostinger/nginx) so req.ip and secure-cookie
+// detection are correct, and so express-rate-limit doesn't misbehave.
+app.set("trust proxy", 1);
+
+// The admin/frontend apps send the httpOnly auth cookie cross-subdomain
+// (withCredentials: true), which requires the CORS response to echo back
+// the exact requesting origin (not "*") and set credentials:true.
+const allowedOrigins = [
+  "https://admin.anchorafrica.org",
+  "https://anchorafrica.org",
+  "https://www.anchorafrica.org",
+  "https://forms.anchorafrica.org",
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5174",
+];
+
+const corsOptions = {
+  origin(origin, callback) {
+    // Allow requests with no Origin header (curl, server-to-server, health checks)
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    console.log(`❌ CORS blocked origin: ${origin}`);
+    callback(new Error(`Not allowed by CORS: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+  optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
+// Handle preflight requests for all routes
+app.options("*", cors(corsOptions));
+
+// Tell CDN/proxies never to cache API responses (prevents stale/missing CORS headers)
+app.use((req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  res.set("Surrogate-Control", "no-store");
+  next();
+});
 
 // Body parser — strict limit to block large JSON payloads
 app.use(express.json({ limit: "50kb" }));
@@ -102,5 +144,5 @@ app.listen(PORT, () => {
   console.log(
     `✅ Server is running in ${process.env.NODE_ENV || "development"} MODE on port ${PORT}`,
   );
-  console.log(`📍 CORS: all origins allowed (origin: true)`);
+  console.log(`📍 Allowed CORS origins: ${allowedOrigins.join(", ")}`);
 });
