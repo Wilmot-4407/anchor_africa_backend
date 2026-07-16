@@ -1,6 +1,13 @@
 const ErrorResponse = require("../utils/errorResponse");
 
 const errorHandler = (err, req, res, next) => {
+  // Re-apply CORS headers on error responses so CDN/proxy errors don't strip them
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
+
   let error = { ...err };
   error.message = err.message;
 
