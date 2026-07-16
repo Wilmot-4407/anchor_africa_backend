@@ -22,45 +22,44 @@ const app = express();
 
 // Trust the first proxy hop (Hostinger/nginx) so req.ip is correct
 // This is required for rate limiting and IP-based duplicate-submission checks
-app.set("trust proxy", 1);
-const corsOptions = {
-  origin: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "X-Requested-With",
-    "Accept",
-  ],
-  credentials: true,
-  optionsSuccessStatus: 200,
-};
+// app.set("trust proxy", 1);
+// const corsOptions = {
+//   origin: true,
+//   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+//   allowedHeaders: [
+//     "Content-Type",
+//     "Authorization",
+//     "X-Requested-With",
+//     "Accept",
+//   ],
+//   credentials: true,
+//   optionsSuccessStatus: 200,
+// };
 
 // ✅ Apply CORS (MUST be FIRST middleware)
-const corsMiddleware = cors(corsOptions);
-app.use(corsMiddleware);
+// const corsMiddleware = cors(corsOptions);
+// app.use(corsMiddleware);
 
 // Handle preflight requests for ALL routes
-app.options("*", corsMiddleware);
+// app.options("*", corsMiddleware);
 
 // Tell CDN/proxies never to cache API responses (prevents stale CORS headers)
-app.use((req, res, next) => {
-  res.set("Cache-Control", "no-store");
-  res.set("Surrogate-Control", "no-store");
-  next();
-});
+// app.use((req, res, next) => {
+//   res.set("Cache-Control", "no-store");
+//   res.set("Surrogate-Control", "no-store");
+//   next();
+// });
 // =============================================================================
+
+// enable cors
+app.use(cors({}));
 
 // Body parser — strict limit to block large JSON payloads
 app.use(express.json({ limit: "50kb" }));
 app.use(express.urlencoded({ extended: false, limit: "50kb" }));
 
 // Set security headers
-app.use(
-  helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-  }),
-);
+app.use(helmet());
 
 // Prevent XSS attacks
 app.use((req, res, next) => {
